@@ -1,131 +1,163 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { NextResponse } from "next/server";
 import OpenAI from "openai";
+import { NextResponse } from "next/server";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY!,
-});
+const OPENAI_KEY = process.env.OPENAI_API_KEY || "";
+
+const openai = OPENAI_KEY ? new OpenAI({ apiKey: OPENAI_KEY }) : null;
+
+function safeUrl(u: string) {
+  if (!u) return "";
+  try {
+    return new URL(u).toString();
+  } catch {
+    return u;
+  }
+}
 
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
-    const query = searchParams.get("query");
-
-    // 🕒 Always fetch the latest Reddit data — not cached top posts
+    const query = searchParams.get("query")?.trim() || "";
     const redditUrl = query
-      ? `https://www.reddit.com/search.json?q=${encodeURIComponent(query)}&sort=new&limit=15`
-      : `https://www.reddit.com/r/all/hot.json?limit=15`;
+      ? `https://www.reddit.com/search.json?q=${encodeURIComponent(query)}&sort=new&limit=50`
+      : `https://www.reddit.com/r/all/hot.json?limit=50`;
 
-    // Add cache-busting param to guarantee fresh fetch each time
-    const noCacheUrl = `${redditUrl}&_t=${Date.now()}`;
-
-    const response = await fetch(noCacheUrl, {
-      headers: { "User-Agent": "nextjs-reddit-trending-app/1.0" },
-      cache: "no-store", // 🔥 force Next.js to skip any internal caching
+    // add cache bust param
+    const response = await fetch(`${redditUrl}&_t=${Date.now()}`, {
+      headers: { "User-Agent": "nextjs-reddit-trend-app/1.0" },
+      cache: "no-store"
     });
 
     if (!response.ok) throw new Error("Failed to fetch Reddit data");
+
     const json = await response.json();
 
-    const posts = json.data.children.map((child: any) => {
-      const d = child.data;
+    const posts = (json.data.children || []).map((ch: { data: any; }) => {
+      const d = ch.data;
       return {
         id: d.id,
         title: d.title,
         subreddit: d.subreddit,
         author: d.author,
-        upvotes: d.ups,
-        comments: d.num_comments,
-        upvoteRatio: d.upvote_ratio,
-        createdUtc: d.created_utc,
-        url: `https://reddit.com${d.permalink}`,
+        upvotes: d.ups || 0,
+        comments: d.num_comments || 0,
+        createdUtc: d.created_utc || Math.floor(Date.now() / 1000),
+        url: safeUrl(`https://reddit.com${d.permalink || ""}`),
         thumbnail: d.thumbnail?.startsWith("http") ? d.thumbnail : null,
         mediaUrl:
           d.is_video && d.media?.reddit_video?.fallback_url
             ? d.media.reddit_video.fallback_url
             : d.url_overridden_by_dest || d.url,
-        isVideo: d.is_video,
-        nsfw: d.over_18,
+        isVideo: !!d.is_video,
+        nsfw: !!d.over_18,
         domain: d.domain,
-        engagementScore: d.ups + d.num_comments * 2,
-        viralityIndex:
-          d.subreddit_subscribers > 0
-            ? Number((d.ups / d.subreddit_subscribers).toFixed(5))
-            : null,
-        contentType: d.is_video
-          ? "Video"
-          : d.post_hint === "image"
-          ? "Image"
-          : "Text",
+        subreddit_subscribers: d.subreddit_subscribers || 0,
+        engagementScore: (d.ups || 0) + (d.num_comments || 0) * 2
       };
     });
 
     if (!posts.length) {
-      throw new Error("No live data found from Reddit.");
+      return NextResponse.json({ success: false, message: "No reddit posts found." }, { status: 404 });
     }
 
-    const aiList = posts
-      .map((p: { title: any; subreddit: any; }, i: number) => `${i + 1}. ${p.title} (r/${p.subreddit})`)
-      .join("\n");
+    // Build a simple text list for AI or fallback
+    const listText = posts.map((p: any, i: number) => `${i + 1}. ${p.title} (r/${p.subreddit})`).join("\n");
 
-    const prompt = `
-You are a marketing trend analyst.
-Categorize these **live Reddit posts** into marketing-relevant groups based on their titles and subreddits.
-
-Rules:
-- Output **strictly valid JSON**.
-- Use the **post ID numbers only** to assign posts to categories.
-- Do NOT recreate or modify post data.
-
-JSON Example output:
-{
-  "groups": [
-    { "category": "AI & Tech", "postIds": [1, 5, 8] },
-    { "category": "Finance / Economy", "postIds": [2, 4] }
-  ],
-  "summary": "Brief marketing insight..."
-}
+    // If we have OpenAI, ask it to group posts into marketing categories and a short summary
+    if (openai) {
+      try {
+        const prompt = `You are an expert marketing analyst. Categorize these live Reddit posts into marketing-relevant groups.
+Return strictly JSON with keys "groups" and "summary".
+- "groups": array of { "category": string, "postIds": [1,2] }
+- "summary": short marketing insight (1-2 sentences)
 
 Posts:
-${aiList}
-`;
+${listText}`;
 
-    const aiResponse = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "system",
-          content: "You are an expert in analyzing Reddit trends for marketing insights.",
-        },
-        { role: "user", content: prompt },
-      ],
-      response_format: { type: "json_object" },
-      temperature: 0.5,
+        const completion = await openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages: [
+            { role: "system", content: "You are an expert marketing trend analyst." },
+            { role: "user", content: prompt }
+          ],
+          temperature: 0.4,
+          max_tokens: 500
+        });
+
+        const content = completion.choices?.[0]?.message?.content || "{}";
+        let aiJson = {};
+        try {
+          aiJson = JSON.parse(content);
+        } catch {
+          // If not strict JSON, try to find JSON within the text
+          const match = content.match(/(\{[\s\S]*\})/);
+          aiJson = match ? JSON.parse(match[1]) : {};
+        }
+
+        const groupedTopics = (aiJson as any).groups?.map((g: any) => ({
+          category: g.category,
+          posts: (g.postIds || []).map((id: number) => posts[id - 1]).filter(Boolean)
+        })) || [];
+
+        return NextResponse.json({
+          success: true,
+          query: query || "top trending",
+          totalPosts: posts.length,
+          groupedTopics,
+          marketingSummary: (aiJson as any).summary || null
+        });
+      } catch (err) {
+        console.error("OpenAI error:", err);
+        // continue to fallback grouping
+      }
+    }
+
+    // ===== Fallback grouping (no OpenAI / AI failed) =====
+    // Very simple keyword-based grouping: pick top frequent words from titles excluding stopwords
+    const stopwords = new Set([
+      "the","and","a","to","of","in","for","on","is","it","this","that","you","with","i","my","we","me"
+    ]);
+
+    const freq: Record<string, number> = {};
+    posts.forEach((p: any) => {
+      p.title
+        .replace(/[^\w\s]/g, " ")
+        .toLowerCase()
+        .split(/\s+/)
+        .forEach((w: string) => {
+          if (!w || w.length < 3 || stopwords.has(w)) return;
+          freq[w] = (freq[w] || 0) + 1;
+        });
     });
 
-    const aiJson = JSON.parse(aiResponse.choices[0].message.content || "{}");
+    // get top 6 words
+    const topWords = Object.entries(freq).sort((a,b)=>b[1]-a[1]).slice(0,6).map(x=>x[0]);
 
-    const groupedTopics =
-      aiJson.groups?.map((group: any) => ({
-        category: group.category,
-        posts: group.postIds
-          .map((id: number) => posts[id - 1])
-          .filter(Boolean),
-      })) || [];
+    // Create groups by finding posts that include these words
+    const groups: { category: string; posts: any[] }[] = topWords.map((w) => ({
+      category: w,
+      posts: posts.filter((p: any) => p.title.toLowerCase().includes(w)).slice(0,8)
+    })).filter(g => g.posts.length > 0);
+
+    // add uncategorized bucket if any remaining
+    const categorizedIds = new Set(groups.flatMap(g => g.posts.map((p:any)=>p.id)));
+    const leftover = posts.filter((p:any)=>!categorizedIds.has(p.id));
+    if (leftover.length) {
+      groups.push({ category: "misc", posts: leftover.slice(0,8) });
+    }
+
+    const summary = `Top keywords: ${topWords.join(", ")}. ${groups.length} categories generated (fallback).`;
 
     return NextResponse.json({
       success: true,
-      freshness: "real-time", // just to make it clear in the response
-      query: query || "top trending (live)",
+      query: query || "top trending",
       totalPosts: posts.length,
-      groupedTopics,
-      marketingSummary: aiJson.summary || null,
+      groupedTopics: groups,
+      marketingSummary: summary
     });
   } catch (error: any) {
     console.error(error);
-    return NextResponse.json(
-      { success: false, message: error.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, message: error.message || String(error) }, { status: 500 });
   }
 }
