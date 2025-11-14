@@ -12,10 +12,10 @@ export default async function TopicPage({ params }: PageProps) {
   const slug = decodeURIComponent(params.slug || "");
 
   /// Fetch the trending API with slug as query
-  const baseUrl =
-    process.env.NEXT_PUBLIC_BASE_URL ||
-    process.env.VERCEL_URL ||
-    "http://localhost:3000";
+const baseUrl =
+  process.env.NEXT_PUBLIC_BASE_URL ||
+  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "") ||
+  "http://localhost:3000";
 
   const res = await fetch(
     `${baseUrl}/api/trending?query=${encodeURIComponent(slug)}`,
