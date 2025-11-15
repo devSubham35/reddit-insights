@@ -6,16 +6,30 @@ import { GroupedTopic } from "@/typescript/type";
 import React, { useEffect, useState } from "react";
 import TrendingCard from "../components/TrendingCard";
 import LoadingBlock from "../components/LoadingBlock";
-
+import Link from "next/link";
 
 export default function HomePage() {
-
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [summary, setSummary] = useState<string>("");
   const [topics, setTopics] = useState<GroupedTopic[]>([]);
 
   useEffect(() => {
+    // Check if data exists in sessionStorage first
+    const storedTopics = sessionStorage.getItem('trendingTopics');
+    const storedSummary = sessionStorage.getItem('trendingSummary');
+    
+    if (storedTopics) {
+      try {
+        setTopics(JSON.parse(storedTopics));
+        setSummary(storedSummary || "");
+        return; // Don't fetch if we have stored data
+      } catch (e) {
+        console.error("Error parsing stored data:", e);
+      }
+    }
+    
+    // Only fetch if no stored data
     fetchTrending();
   }, []);
 
@@ -27,16 +41,25 @@ export default function HomePage() {
       const data = await res.json();
 
       if (data.success) {
-        setTopics(data.groupedTopics || []);
+        const fetchedTopics = data.groupedTopics || [];
+        setTopics(fetchedTopics);
         setSummary(data.marketingSummary || "");
+        
+        // Store topics in sessionStorage so detail page can access them
+        sessionStorage.setItem('trendingTopics', JSON.stringify(fetchedTopics));
+        sessionStorage.setItem('trendingSummary', data.marketingSummary || "");
       } else {
         setTopics([]);
         setSummary("");
+        sessionStorage.removeItem('trendingTopics');
+        sessionStorage.removeItem('trendingSummary');
       }
     } catch (err) {
       console.error(err);
       setTopics([]);
       setSummary("");
+      sessionStorage.removeItem('trendingTopics');
+      sessionStorage.removeItem('trendingSummary');
     } finally {
       setLoading(false);
     }
@@ -65,7 +88,13 @@ export default function HomePage() {
         </Button>
         <Button
           type="button"
-          onClick={() => fetchTrending()}
+          onClick={() => {
+            // Clear cached data and force refresh
+            sessionStorage.removeItem('trendingTopics');
+            sessionStorage.removeItem('trendingSummary');
+            setQuery(""); // Clear search query
+            fetchTrending();
+          }}
           style={{ borderRadius: "8px" }}
           className="px-4 py-2 rounded-xl bg-neutral-800 border border-neutral-700 text-sm text-primary hover:text-white"
         >
@@ -84,11 +113,17 @@ export default function HomePage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {topics.length ? topics.map((topic: GroupedTopic, i: number) => (
-            <a key={i} href={`/topic/${encodeURIComponent((topic.category || `topic-${i}`))}`} className="group">
+            <Link 
+              key={i} 
+              href={`/topic/${encodeURIComponent((topic.category || `topic-${i}`))}`} 
+              className="group"
+            >
               <TrendingCard topic={topic} rank={i + 1} />
-            </a>
+            </Link>
           )) : (
-            <div className="col-span-full text-center text-neutral-500 mt-8">No trending data found. Try another keyword.</div>
+            <div className="col-span-full text-center text-neutral-500 mt-8">
+              No trending data found. Try another keyword.
+            </div>
           )}
         </div>
       )}
