@@ -75,22 +75,22 @@ Return strictly JSON with keys "groups" and "summary".
 Posts:
 ${listText}`;
 
-        const completion = await openai.chat.completions.create({
+        const completion = await openai.responses.create({
           model: "gpt-4o-mini",
-          messages: [
+          input: [
             { role: "system", content: "You are an expert marketing trend analyst." },
             { role: "user", content: prompt }
           ],
-          temperature: 0.4,
-          max_tokens: 500
+          max_output_tokens: 500,
+          temperature: 0.4
         });
 
-        const content = completion.choices?.[0]?.message?.content || "{}";
+        const content = completion.output_text || "{}";
+
         let aiJson = {};
         try {
           aiJson = JSON.parse(content);
         } catch {
-          // If not strict JSON, try to find JSON within the text
           const match = content.match(/(\{[\s\S]*\})/);
           aiJson = match ? JSON.parse(match[1]) : {};
         }
@@ -109,14 +109,13 @@ ${listText}`;
         });
       } catch (err) {
         console.error("OpenAI error:", err);
-        // continue to fallback grouping
       }
     }
 
     // ===== Fallback grouping (no OpenAI / AI failed) =====
     // Very simple keyword-based grouping: pick top frequent words from titles excluding stopwords
     const stopwords = new Set([
-      "the","and","a","to","of","in","for","on","is","it","this","that","you","with","i","my","we","me"
+      "the", "and", "a", "to", "of", "in", "for", "on", "is", "it", "this", "that", "you", "with", "i", "my", "we", "me"
     ]);
 
     const freq: Record<string, number> = {};
@@ -132,19 +131,19 @@ ${listText}`;
     });
 
     // get top 6 words
-    const topWords = Object.entries(freq).sort((a,b)=>b[1]-a[1]).slice(0,6).map(x=>x[0]);
+    const topWords = Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, 6).map(x => x[0]);
 
     // Create groups by finding posts that include these words
     const groups: { category: string; posts: any[] }[] = topWords.map((w) => ({
       category: w,
-      posts: posts.filter((p: any) => p.title.toLowerCase().includes(w)).slice(0,8)
+      posts: posts.filter((p: any) => p.title.toLowerCase().includes(w)).slice(0, 8)
     })).filter(g => g.posts.length > 0);
 
     // add uncategorized bucket if any remaining
-    const categorizedIds = new Set(groups.flatMap(g => g.posts.map((p:any)=>p.id)));
-    const leftover = posts.filter((p:any)=>!categorizedIds.has(p.id));
+    const categorizedIds = new Set(groups.flatMap(g => g.posts.map((p: any) => p.id)));
+    const leftover = posts.filter((p: any) => !categorizedIds.has(p.id));
     if (leftover.length) {
-      groups.push({ category: "misc", posts: leftover.slice(0,8) });
+      groups.push({ category: "misc", posts: leftover.slice(0, 8) });
     }
 
     const summary = `Top keywords: ${topWords.join(", ")}. ${groups.length} categories generated (fallback).`;
