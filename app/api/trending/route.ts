@@ -25,9 +25,12 @@ export async function GET(req: Request) {
 
     // add cache bust param
     const response = await fetch(`${redditUrl}&_t=${Date.now()}`, {
-      headers: { "User-Agent": "nextjs-reddit-trend-app/1.0" },
+      headers: {
+        "User-Agent": "windows:com.reddit-insights.app:v1.0.0 (by /u/placeholder_user)"
+      },
       cache: "no-store"
     });
+
 
     if (!response.ok) throw new Error("Failed to fetch Reddit data");
 
