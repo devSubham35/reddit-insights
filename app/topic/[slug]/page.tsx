@@ -1,206 +1,265 @@
 "use client";
 
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { useParams, } from "next/navigation";
-import StatCard from "../../../components/StatCard";
-import SparklineChart from "../../../components/SparklineChart";
-import { GroupResponse, Post, TrendPoint } from "@/typescript/type";
+import { RiArrowLeftLine, RiExternalLinkLine } from "react-icons/ri";
+import { Topic } from "@/typescript/type";
+import DetailChart from "@/components/DetailChart";
+import LoadingBlock from "@/components/LoadingBlock";
+import Link from "next/link";
 
-export default function TopicPage() {
-  const params = useParams();
-  const slug = decodeURIComponent((params.slug as string) || "");
-  
-  const [group, setGroup] = useState<GroupResponse | null>(null);
+export default function TopicDetailPage() {
+  const router = useRouter();
+
+  const [topic, setTopic] = useState<Topic | null>(null);
+  const [allTopics, setAllTopics] = useState<Topic[]>([]);
+  const [rank, setRank] = useState<number>(1);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Try to get data from sessionStorage first
-    const storedData = sessionStorage.getItem('trendingTopics');
-    
-    if (storedData) {
+    // Small delay to ensure sessionStorage is ready
+    const loadData = () => {
       try {
-        const topics = JSON.parse(storedData);
-        const foundGroup = topics.find((g: GroupResponse) => {
-          const categoryLower = (g.category || "").toLowerCase();
-          const slugLower = slug.toLowerCase();
-          return categoryLower === slugLower || 
-                 categoryLower.includes(slugLower) || 
-                 slugLower.includes(categoryLower);
+        const storedTopic = sessionStorage.getItem("selectedTopic");
+        const storedRank = sessionStorage.getItem("selectedTopicRank");
+        const storedAllTopics = sessionStorage.getItem("trendingTopics");
+
+        console.log("Loading from sessionStorage:", {
+          hasTopic: !!storedTopic,
+          hasRank: !!storedRank,
+          hasAllTopics: !!storedAllTopics
         });
-        
-        if (foundGroup) {
-          setGroup(foundGroup);
-          setLoading(false);
-          return;
+
+        if (storedTopic) {
+          const parsedTopic: Topic = JSON.parse(storedTopic);
+          setTopic(parsedTopic);
+          setRank(storedRank ? parseInt(storedRank, 10) : 1);
+
+          if (storedAllTopics) {
+            setAllTopics(JSON.parse(storedAllTopics));
+          }
         }
       } catch (e) {
-        console.error("Error parsing stored data:", e);
+        console.error("Error loading topic data:", e);
       }
-    }
-
-    // If no stored data, fetch from API
-    fetchTopicData();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug]);
-
-  async function fetchTopicData() {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/trending?query=${encodeURIComponent(slug)}`);
-      const data = await res.json();
-
-      if (data.success && data.groupedTopics?.length) {
-        // Find matching group or use first one
-        const foundGroup = data.groupedTopics.find((g: GroupResponse) => {
-          const categoryLower = (g.category || "").toLowerCase();
-          const slugLower = slug.toLowerCase();
-          return categoryLower === slugLower || 
-                 categoryLower.includes(slugLower) || 
-                 slugLower.includes(categoryLower);
-        }) || data.groupedTopics[0];
-
-        setGroup(foundGroup);
-      } else {
-        setGroup(null);
-      }
-    } catch (err) {
-      console.error(err);
-      setGroup(null);
-    } finally {
       setLoading(false);
-    }
-  }
+    };
+
+    // Use setTimeout to ensure this runs after navigation is complete
+    setTimeout(loadData, 50);
+  }, []);
+
+  const handleBackClick = () => {
+    router.push("/");
+  };
 
   if (loading) {
     return (
-      <div className="max-w-6xl mx-auto px-6 py-10">
-        <Link href="/" className="text-sm text-primary mb-4 inline-block">
-          &larr; Back to Dashboard
-        </Link>
-        <div className="text-center text-neutral-500 mt-8">Loading...</div>
-      </div>
-    );
-  }
-
-  if (!group || !group.posts || group.posts.length === 0) {
-    return (
-      <div className="max-w-6xl mx-auto px-6 py-10">
-        <Link href="/" className="text-sm text-primary mb-4 inline-block">
-          &larr; Back to Dashboard
-        </Link>
-        <h1 className="text-3xl font-extrabold text-white mb-1">{slug}</h1>
-        <div className="text-center text-neutral-500 mt-8">
-          No posts found for this topic.
+      <div className="min-h-screen bg-[#0f1114]">
+        <div className="max-w-5xl mx-auto px-6 py-8">
+          <LoadingBlock text="Loading topic details..." />
         </div>
       </div>
     );
   }
 
-  // Build 7-day trend graph
-  const now = Math.floor(Date.now() / 1000);
-  const days = [6, 5, 4, 3, 2, 1, 0];
+  if (!topic) {
+    return (
+      <div className="min-h-screen bg-[#0f1114] flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-neutral-400 mb-4">No topic selected. Please go back to the dashboard and select a topic.</p>
+          <button
+            onClick={handleBackClick}
+            className="text-[#ff4d9d] hover:underline"
+          >
+            Back to Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
 
-  const trend: TrendPoint[] = days.map((d) => {
-    const start = now - (d + 1) * 24 * 60 * 60;
-    const end = now - d * 24 * 60 * 60;
+  // Extract keywords from title
+  const stopWords = new Set([
+    "the", "and", "for", "that", "this", "with", "was", "are", "have", "has",
+    "had", "been", "will", "would", "could", "should", "what", "when", "where",
+    "which", "who", "whom", "how", "why", "all", "any", "both", "each", "few",
+    "more", "most", "other", "some", "such", "than", "too", "very", "just",
+    "but", "only", "own", "same", "into", "over", "after", "before", "between",
+    "under", "again", "there", "here", "from", "about", "your", "they", "them",
+    "their", "its", "our", "out", "not", "also", "you", "can", "while", "today"
+  ]);
 
-    const count = group.posts.filter(
-      (p: Post) => p.createdUtc >= start && p.createdUtc <= end
-    ).length;
+  const keywords = topic.title
+    .toLowerCase()
+    .replace(/[^\w\s]/g, "")
+    .split(/\s+/)
+    .filter((w) => w.length > 2 && !stopWords.has(w))
+    .slice(0, 3)
+    .join(", ");
 
-    return {
-      time: d === 0 ? "Today" : `${d}d ago`,
-      value: count,
-    };
+  // Get related posts - prioritize same subreddit, then similar engagement
+  const relatedPosts = allTopics
+    .filter((t) => t.id !== topic.id)
+    .sort((a, b) => {
+      // Prioritize same subreddit
+      const aMatch = a.subreddit === topic.subreddit ? 1 : 0;
+      const bMatch = b.subreddit === topic.subreddit ? 1 : 0;
+      if (aMatch !== bMatch) return bMatch - aMatch;
+      // Then sort by engagement score similarity
+      const aDiff = Math.abs(a.engagementScore - topic.engagementScore);
+      const bDiff = Math.abs(b.engagementScore - topic.engagementScore);
+      return aDiff - bDiff;
+    })
+    .slice(0, 2); // Get 2 related posts (current topic + 2 = 3 examples)
+
+  // Count subreddit mentions - prioritize the current topic's subreddit
+  const subredditCounts: Record<string, number> = {};
+  const topicsToCount = allTopics.length > 0 ? allTopics : [topic];
+  
+  // Add extra weight to current topic's subreddit
+  subredditCounts[topic.subreddit] = topic.mentions || 1;
+  
+  topicsToCount.forEach((t) => {
+    const sub = t.subreddit || "unknown";
+    if (sub !== topic.subreddit) {
+      subredditCounts[sub] = (subredditCounts[sub] || 0) + 1;
+    }
   });
-
-  // Stats
-  const mentions = group.posts.length;
-  const subredditCount = new Set(group.posts.map((p) => p.subreddit)).size;
-  const score = group.posts.reduce(
-    (sum, p) => sum + (p.engagementScore || 0),
-    0
-  );
-
-  // Count mentions per subreddit
-  const subredditMentions = group.posts.reduce((acc, p) => {
-    acc[p.subreddit] = (acc[p.subreddit] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
-
-  const topSubreddits = Object.entries(subredditMentions)
+  
+  const topSubreddits = Object.entries(subredditCounts)
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 6);
+    .slice(0, 5);
+
+  const dodChange = topic.dodChange ?? 0;
+  const isPositive = dodChange >= 0;
+  const dodColor = isPositive ? "text-emerald-400" : "text-red-400";
+  const dodIcon = isPositive ? "▲" : "▼";
+  const dodLabel = dodChange === 0 ? "Stable" : isPositive ? "Rising" : "Falling";
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-10">
-      <Link href="/" className="text-sm text-primary mb-4 inline-block">
-        &larr; Back to Dashboard
-      </Link>
+    <div className="min-h-screen bg-[#0f1114]">
+      <div className="max-w-5xl mx-auto px-6 py-8">
+        {/* Back Button */}
+        <button
+          onClick={handleBackClick}
+          className="flex items-center gap-2 text-[#ff4d9d] hover:text-[#ff6db3] mb-6 transition-colors"
+        >
+          <RiArrowLeftLine className="text-lg" />
+          <span>Back to Dashboard</span>
+        </button>
 
-      <h1 className="text-3xl font-extrabold text-white mb-1">
-        {group.category || slug}
-      </h1>
-      <p className="text-sm text-neutral-400 mb-6">
-        Keywords: {group.category || slug}
-      </p>
-
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <StatCard label="Mentions" value={mentions} />
-        <StatCard label="DOD %" value={"0%"} />
-        <StatCard label="Subreddit Breadth" value={subredditCount} />
-        <StatCard label="Total Score" value={score} />
-      </div>
-
-      <SparklineChart data={trend} />
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-        {/* Top Examples */}
-        <div className="bg-card p-4 rounded-2xl border border-neutral-800">
-          <h3 className="text-white font-semibold mb-3">Top Examples</h3>
-          <ul className="space-y-3">
-            {group.posts.slice(0, 6).map((post: Post) => (
-              <li key={post.id} className="bg-neutral-900/20 p-3 rounded-md">
-                <Link
-                  href={post.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="font-medium text-white block line-clamp-2 hover:text-primary"
-                >
-                  {post.title}
-                </Link>
-                <div className="text-xs text-neutral-400 mt-1">
-                  r/{post.subreddit} • {post.upvotes} upvotes • {post.comments}{" "}
-                  comments
-                </div>
-              </li>
-            ))}
-          </ul>
+        {/* Header */}
+        <div className="mb-8">
+          <p className="text-neutral-500 text-sm mb-2">Rank #{rank}</p>
+          <h1 className="text-3xl md:text-4xl font-bold text-white mb-3 leading-tight">
+            {topic.title}
+          </h1>
+          <p className="text-neutral-500 text-sm">
+            Keywords: {keywords || "trending, reddit, popular"}
+          </p>
         </div>
 
-        {/* Top Subreddits */}
-        <div className="bg-card p-4 rounded-2xl border border-neutral-800">
-          <h3 className="text-white font-semibold mb-3">Top Subreddits Today</h3>
-          <ul className="space-y-2">
-            {topSubreddits.map(([sub, count], i) => (
-              <li
-                key={i}
-                className="flex items-center justify-between p-2 rounded-md bg-neutral-900/10"
-              >
-                <div className="text-sm text-primary font-medium">
-                  r/{sub}
-                </div>
-                <div className="text-xs text-neutral-400">
-                  {count} mention{count !== 1 ? 's' : ''}
-                </div>
-              </li>
-            ))}
+        {/* Stats Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <div className="bg-[#1a1d24] border border-neutral-800 rounded-xl p-5 text-center">
+            <p className="text-neutral-500 text-xs uppercase tracking-wide mb-2">Mentions</p>
+            <p className="text-white text-2xl font-bold">{topic.mentions ?? 0}</p>
+          </div>
+          <div className="bg-[#1a1d24] border border-neutral-800 rounded-xl p-5 text-center">
+            <p className="text-neutral-500 text-xs uppercase tracking-wide mb-2">DoD %</p>
+            <p className={`text-2xl font-bold ${dodColor}`}>
+              {dodIcon} {Math.abs(dodChange)}%
+            </p>
+            <p className={`text-xs ${dodColor}`}>{dodLabel}</p>
+          </div>
+          <div className="bg-[#1a1d24] border border-neutral-800 rounded-xl p-5 text-center">
+            <p className="text-neutral-500 text-xs uppercase tracking-wide mb-2">Subreddit Breadth</p>
+            <p className="text-white text-2xl font-bold">{topic.breadth ?? 0}</p>
+          </div>
+          <div className="bg-[#1a1d24] border border-neutral-800 rounded-xl p-5 text-center">
+            <p className="text-neutral-500 text-xs uppercase tracking-wide mb-2">Total Score</p>
+            <p className="text-white text-2xl font-bold">{(topic.engagementScore ?? 0).toLocaleString()}</p>
+          </div>
+        </div>
 
-            {topSubreddits.length === 0 && (
-              <div className="text-neutral-500">No subreddits</div>
-            )}
-          </ul>
+        {/* 7-Day Chart */}
+        <div className="bg-[#1a1d24] border border-neutral-800 rounded-xl p-6 mb-6">
+          <h2 className="text-neutral-300 font-medium mb-4">7-Day Mention Trend</h2>
+          <DetailChart data={topic.trendData || []} />
+        </div>
+
+        {/* Bottom Section */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          {/* Top Examples - Current topic and related posts */}
+          <div className="bg-[#1a1d24] border border-neutral-800 rounded-xl p-5">
+            <h3 className="text-neutral-300 font-medium mb-4">Top Examples</h3>
+            <div className="flex flex-col gap-3">
+              {/* Current topic first */}
+              <Link
+                href={topic.url || "#"}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bg-[#0f1114] border border-neutral-800 rounded-lg p-4 hover:border-neutral-700 transition-colors group"
+              >
+                <p className="text-white text-sm font-medium truncate pr-6 mb-1">
+                  {topic.title}
+                </p>
+                <div className="flex items-center justify-between">
+                  <p className="text-neutral-500 text-xs">r/{topic.subreddit}</p>
+                  <RiExternalLinkLine className="text-neutral-600 group-hover:text-neutral-400 transition-colors" />
+                </div>
+              </Link>
+              {/* Related posts */}
+              {relatedPosts.map((post, i) => (
+                <Link
+                  key={`example-${post.id}-${i}`}
+                  href={post.url || "#"}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-[#0f1114] border border-neutral-800 rounded-lg p-4 hover:border-neutral-700 transition-colors group"
+                >
+                  <p className="text-white text-sm font-medium truncate pr-6 mb-1">
+                    {post.title}
+                  </p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-neutral-500 text-xs">r/{post.subreddit}</p>
+                    <RiExternalLinkLine className="text-neutral-600 group-hover:text-neutral-400 transition-colors" />
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          {/* Top Subreddits Today */}
+          <div className="bg-[#1a1d24] border border-neutral-800 rounded-xl p-5">
+            <h3 className="text-neutral-300 font-medium mb-4">Top Subreddits Today</h3>
+            <div className="flex flex-col gap-2">
+              {topSubreddits.map(([subreddit, count]) => (
+                <div
+                  key={`sub-${subreddit}`}
+                  className="flex items-center justify-between py-2 border-b border-neutral-800/50 last:border-0"
+                >
+                  <Link
+                    href={`https://reddit.com/r/${subreddit}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[#ff4d9d] hover:text-[#ff6db3] text-sm transition-colors"
+                  >
+                    r/{subreddit}
+                  </Link>
+                  <span className="text-neutral-500 text-xs font-mono">
+                    {count} mentions
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="text-center text-neutral-600 text-sm py-4">
+          Powered by Reddit & Gemini
         </div>
       </div>
     </div>
