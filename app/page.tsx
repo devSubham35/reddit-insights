@@ -1,6 +1,6 @@
 "use client";
 
-import { RiRefreshLine, RiSearchLine } from "react-icons/ri";
+import { RiRefreshLine } from "react-icons/ri";
 import { Button } from "@/components/ui/button";
 import { Topic } from "@/typescript/type";
 import React, { useEffect, useState } from "react";
@@ -17,7 +17,6 @@ export default function HomePage() {
   const [topics, setTopics] = useState<Topic[]>([]);
   const [lastUpdated, setLastUpdated] = useState<string>("");
   const [filter, setFilter] = useState<FilterType>("all");
-  const [searchFilter, setSearchFilter] = useState("");
 
   useEffect(() => {
     const storedTopics = sessionStorage.getItem("trendingTopics");
@@ -73,7 +72,7 @@ export default function HomePage() {
     sessionStorage.removeItem("trendingTopics");
     sessionStorage.removeItem("trendingLastUpdated");
     setQuery("");
-    setSearchFilter("");
+    setFilter("all");
     fetchTrending();
   }
 
@@ -84,18 +83,9 @@ export default function HomePage() {
     router.push(`/topic/${topic.id}`);
   }
 
-  // Filter topics based on filter type and search
+  // Filter topics based on filter type only
   const filteredTopics = topics.filter((topic) => {
-    const title = topic.title || "";
-    const subreddit = topic.subreddit || "";
     const dodChange = topic.dodChange ?? 0;
-
-    const matchesSearch =
-      searchFilter === "" ||
-      title.toLowerCase().includes(searchFilter.toLowerCase()) ||
-      subreddit.toLowerCase().includes(searchFilter.toLowerCase());
-
-    if (!matchesSearch) return false;
 
     if (filter === "rising") return dodChange > 0;
     if (filter === "falling") return dodChange < 0;
@@ -139,49 +129,45 @@ export default function HomePage() {
           </Button>
         </div>
 
-        {/* Search Form for API query */}
-        <form onSubmit={onSubmit} className="flex items-center gap-2 mb-6">
-          <input
-            className="flex-1 bg-[#1a1d24] border border-neutral-800 rounded-xl outline-none text-white placeholder:text-neutral-500 px-4 py-3"
-            placeholder="Search Reddit (AI, crypto, gaming...)"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-          <Button
-            disabled={loading}
-            className="px-6 py-3 rounded-xl bg-[#ff4d9d] hover:bg-[#ff3385] text-white font-semibold"
+        {/* Search Form with Filters */}
+        <div className="mb-6 flex items-center gap-2 w-full h-12">
+          {/* Search Form */}
+          <form
+            onSubmit={onSubmit}
+            className="flex items-center gap-2 w-full h-full"
           >
-            {loading ? "Searching..." : "Search"}
-          </Button>
-        </form>
-
-        {/* Filter Bar */}
-        <div className="flex items-center gap-4 mb-6 bg-[#1a1d24] border border-neutral-800 rounded-xl p-3">
-          <div className="flex-1 flex items-center gap-2 bg-[#0f1114] rounded-lg px-3 py-2">
-            <RiSearchLine className="text-neutral-500" />
             <input
-              className="flex-1 bg-transparent outline-none text-white placeholder:text-neutral-500 text-sm"
+              className="w-full bg-[#1a1d24] border border-neutral-800 rounded-xl outline-none text-white placeholder:text-neutral-500 px-4 h-full"
               placeholder="Search topics..."
-              value={searchFilter}
-              onChange={(e) => setSearchFilter(e.target.value)}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
             />
-          </div>
-          <div className="flex gap-1">
+
+            <Button
+              disabled={loading}
+              className="px-6 rounded-xl bg-[#ff4d9d] hover:bg-[#ff3385] text-white font-semibold h-[90%]"
+            >
+              {loading ? "Searching..." : "Search"}
+            </Button>
+          </form>
+
+          {/* Filter Buttons */}
+          <div className="flex items-center gap-2 h-[90%]">
             {(["all", "rising", "falling"] as FilterType[]).map((f) => (
               <button
                 key={f}
                 onClick={() => setFilter(f)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                  filter === f
-                    ? "bg-[#2a8a8a] text-white"
-                    : "text-neutral-400 hover:text-white"
-                }`}
+                className={`h-full px-6 rounded-lg text-sm font-medium flex items-center transition-all ${filter === f
+                    ? "bg-[#ff4d9d] text-white"
+                    : "bg-[#1a1d24] text-neutral-400 hover:text-white hover:bg-[#252830]"
+                  }`}
               >
                 {f.charAt(0).toUpperCase() + f.slice(1)}
               </button>
             ))}
           </div>
         </div>
+
 
         {/* Topics List */}
         {loading ? (

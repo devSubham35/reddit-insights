@@ -85,33 +85,55 @@ export async function GET(req: Request) {
           `${i + 1}. "${p.title}" (r/${p.subreddit}, ${p.upvotes} upvotes, ${p.comments} comments)`
         ).join("\n");
 
-        const prompt = `Analyze these Reddit posts and group them into 8-12 trending topics/themes. For each topic:
-1. Create a short, catchy title (3-6 words) that summarizes the theme
-2. Write a brief description (8-15 words) explaining what the trend is about
+        const prompt = `You are a social media trend analyst. Analyze these Reddit posts and identify 8-20 distinct trending topics or themes. 
+
+For each topic, create:
+1. A clear, specific title (3-7 words) - be concrete and newsworthy
+2. A brief description using comma-separated key phrases (4-8 words total, 2-4 phrases separated by commas)
 3. List which post numbers belong to this topic
 
-Return JSON format:
+Description Style Rules:
+- Use SHORT comma-separated phrases (example: "Work realities, India vs Australia, work-life balance")
+- Each phrase should be 1-3 words maximum
+- Include specific details: locations, numbers, concrete terms
+- NO full sentences, NO "and", NO articles (the/a/an)
+- Format: "phrase1, phrase2, phrase3" or "phrase1, phrase2, phrase3, phrase4"
+
+Examples of GOOD descriptions:
+✓ "Work realities, India vs Australia, work-life balance"
+✓ "U.S. hitting $38 trillion, tariffs new laws"
+✓ "New policies, Government needs, West Europe immigrants"
+✓ "Scotiabank debt-calls, Changes in AI ethics, HR"
+
+Examples of BAD descriptions:
+✗ "Discussions about economic concerns and policy changes"
+✗ "People are talking about work culture"
+
+Return ONLY valid JSON:
 {
   "topics": [
     {
-      "title": "AI & Technology Concerns",
-      "description": "Discussions about AI ethics, job displacement, and tech industry changes",
-      "postIds": [1, 5, 12, 23]
+      "title": "Global work-culture",
+      "description": "Work realities, India vs Australia, work-life balance",
+      "postIds": [1, 5, 12]
     }
   ]
 }
 
-Posts:
+Reddit Posts:
 ${listText}`;
 
         const completion = await openai.responses.create({
           model: "gpt-4o-mini",
           input: [
-            { role: "system", content: "You are a trend analyst expert at identifying patterns and themes in social media discussions. Create insightful, engaging topic titles and descriptions." },
+            { 
+              role: "system", 
+              content: "You are a trend analyst. Create specific topic titles and SHORT comma-separated descriptions (no full sentences). Use phrases like 'Work realities, India vs Australia' not 'Discussions about work'. Always return valid JSON only." 
+            },
             { role: "user", content: prompt }
           ],
-          max_output_tokens: 1500,
-          temperature: 0.5
+          max_output_tokens: 2000,
+          temperature: 0.2
         });
 
         const content = completion.output_text || "{}";
@@ -167,7 +189,16 @@ ${listText}`;
               breadth,
               dodChange,
               trendData: generateTrendData(baseValue),
-              relatedPosts: posts.slice(0, 5) // Store related posts for detail page
+              relatedPosts: posts.slice(0, 5).map((p: any) => ({
+                id: p.id,
+                title: p.title,
+                subreddit: p.subreddit,
+                author: p.author,
+                upvotes: p.upvotes,
+                comments: p.comments,
+                url: p.url,
+                engagementScore: p.engagementScore
+              }))
             };
           }).filter(Boolean);
 
@@ -187,38 +218,75 @@ ${listText}`;
       }
     }
 
-    // Fallback: Simple keyword-based grouping without AI
-    const keywords: Record<string, any[]> = {};
-    const stopwords = new Set(["the", "and", "for", "that", "this", "with", "you", "are", "was", "have", "has", "just", "but", "not", "what", "all", "were", "when", "your", "can", "had", "her", "she", "him", "his", "they", "been", "would", "there", "their", "will", "from", "more", "about"]);
-
+    // Fallback: Improved keyword-based grouping without AI
+    const topicGroups: Record<string, any[]> = {};
+    
+    // Extract meaningful phrases and keywords
     rawPosts.forEach((post: any) => {
-      const words = post.title.toLowerCase().replace(/[^\w\s]/g, "").split(/\s+/);
-      const significantWords = words.filter((w: string) => w.length > 4 && !stopwords.has(w));
+      const title = post.title.toLowerCase();
       
-      if (significantWords.length > 0) {
-        const keyword = significantWords[0];
-        if (!keywords[keyword]) keywords[keyword] = [];
-        keywords[keyword].push(post);
+      // Try to extract meaningful 2-3 word phrases
+      const words = title.replace(/[^\w\s]/g, "").split(/\s+/);
+      let matched = false;
+      
+      // Look for existing groups that match
+      for (const [key, posts] of Object.entries(topicGroups)) {
+        const keyWords = key.split(" ");
+        const matchCount = keyWords.filter(kw => title.includes(kw)).length;
+        if (matchCount >= 2 || (keyWords.length === 1 && title.includes(keyWords[0]))) {
+          posts.push(post);
+          matched = true;
+          break;
+        }
+      }
+      
+      // Create new group if no match
+      if (!matched && words.length > 0) {
+        const stopwords = new Set(["the", "and", "for", "that", "this", "with", "you", "are", "was", "have", "has", "just", "but", "not", "what", "all", "were", "when", "your", "can", "had", "her", "she", "him", "his", "they", "been", "would", "there", "their", "will", "from", "more", "about", "why", "how"]);
+        const significantWords = words.filter((w: string) => w.length > 3 && !stopwords.has(w)).slice(0, 3);
+        
+        if (significantWords.length > 0) {
+          const key = significantWords.slice(0, 2).join(" ");
+          topicGroups[key] = [post];
+        }
       }
     });
 
-    // Create topic groups from keywords
-    const fallbackTopics = Object.entries(keywords)
+    // Create topic groups from grouped posts
+    const fallbackTopics = Object.entries(topicGroups)
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       .filter(([_, posts]) => posts.length >= 1)
-      .sort((a, b) => b[1].length - a[1].length)
-      .slice(0, 12)
+      .sort((a, b) => {
+        // Sort by total engagement
+        const aEngagement = a[1].reduce((sum, p) => sum + p.engagementScore, 0);
+        const bEngagement = b[1].reduce((sum, p) => sum + p.engagementScore, 0);
+        return bEngagement - aEngagement;
+      })
+      .slice(0, 20)
       .map(([keyword, posts], idx) => {
         const totalEngagement = posts.reduce((sum, p) => sum + p.engagementScore, 0);
         const totalComments = posts.reduce((sum, p) => sum + p.comments, 0);
         const mentions = posts.length * 3 + Math.floor(totalComments / 10);
-        const breadth = Math.min(100, new Set(posts.map(p => p.subreddit)).size * 10);
+        const uniqueSubs = new Set(posts.map(p => p.subreddit));
+        const breadth = Math.min(100, uniqueSubs.size * 15);
         const baseValue = Math.max(5, Math.floor(mentions / 2));
+        
+        // Create a better title and description from the keyword and context
+        const titleWords = keyword.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1));
+        const topSubreddit = posts[0]?.subreddit || "reddit";
+        const commentCount = totalComments;
+        
+        // Create comma-separated description
+        const descParts = [
+          `Trending in r/${topSubreddit}`,
+          `${posts.length} posts`,
+          `${commentCount} comments`
+        ];
 
         return {
           id: `topic-${idx}-${Date.now()}`,
-          title: keyword.charAt(0).toUpperCase() + keyword.slice(1) + " discussions",
-          subtitle: `${posts.length} posts about ${keyword}`,
+          title: `${titleWords.join(" ")} discussions`,
+          subtitle: descParts.slice(0, 3).join(", "),
           originalTitle: posts[0]?.title || "",
           subreddit: posts[0]?.subreddit || "various",
           author: posts[0]?.author || "various",
@@ -237,7 +305,16 @@ ${listText}`;
           breadth,
           dodChange: Math.floor(Math.random() * 20) - 5,
           trendData: generateTrendData(baseValue),
-          relatedPosts: posts.slice(0, 5)
+          relatedPosts: posts.slice(0, 5).map(p => ({
+            id: p.id,
+            title: p.title,
+            subreddit: p.subreddit,
+            author: p.author,
+            upvotes: p.upvotes,
+            comments: p.comments,
+            url: p.url,
+            engagementScore: p.engagementScore
+          }))
         };
       });
 
