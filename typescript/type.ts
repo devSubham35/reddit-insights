@@ -7,6 +7,7 @@ export interface Topic {
   id: string;
   title: string;
   subtitle?: string;
+  originalTitle?: string;
   subreddit: string;
   author: string;
   upvotes: number;
@@ -24,6 +25,18 @@ export interface Topic {
   breadth: number;
   dodChange: number;
   trendData: TrendPoint[];
+  relatedPosts?: RelatedPost[];
+}
+
+export interface RelatedPost {
+  id: string;
+  title: string;
+  subreddit: string;
+  author: string;
+  upvotes: number;
+  comments: number;
+  url: string;
+  engagementScore: number;
 }
 
 export interface TrendingApiResponse {

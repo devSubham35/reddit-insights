@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useRouter } from "next/navigation";
@@ -98,34 +99,32 @@ export default function TopicDetailPage() {
     .slice(0, 3)
     .join(", ");
 
-  // Get related posts - prioritize same subreddit, then similar engagement
-  const relatedPosts = allTopics
-    .filter((t) => t.id !== topic.id)
-    .sort((a, b) => {
-      // Prioritize same subreddit
-      const aMatch = a.subreddit === topic.subreddit ? 1 : 0;
-      const bMatch = b.subreddit === topic.subreddit ? 1 : 0;
-      if (aMatch !== bMatch) return bMatch - aMatch;
-      // Then sort by engagement score similarity
-      const aDiff = Math.abs(a.engagementScore - topic.engagementScore);
-      const bDiff = Math.abs(b.engagementScore - topic.engagementScore);
-      return aDiff - bDiff;
-    })
-    .slice(0, 2); // Get 2 related posts (current topic + 2 = 3 examples)
+  // Get related posts from the topic itself (these are the actual Reddit posts in this topic)
+  const relatedPosts = topic.relatedPosts || [];
 
-  // Count subreddit mentions - prioritize the current topic's subreddit
+  // Count subreddit mentions from related posts
   const subredditCounts: Record<string, number> = {};
-  const topicsToCount = allTopics.length > 0 ? allTopics : [topic];
   
-  // Add extra weight to current topic's subreddit
-  subredditCounts[topic.subreddit] = topic.mentions || 1;
-  
-  topicsToCount.forEach((t) => {
-    const sub = t.subreddit || "unknown";
-    if (sub !== topic.subreddit) {
+  // Count from related posts first
+  if (relatedPosts.length > 0) {
+    relatedPosts.forEach((post: any) => {
+      const sub = post.subreddit || "unknown";
       subredditCounts[sub] = (subredditCounts[sub] || 0) + 1;
-    }
-  });
+    });
+  } else {
+    // Fallback to topic's subreddit
+    subredditCounts[topic.subreddit] = topic.mentions || 1;
+  }
+  
+  // Also add from all topics if available
+  if (allTopics.length > 0) {
+    allTopics.forEach((t) => {
+      const sub = t.subreddit || "unknown";
+      if (!subredditCounts[sub]) {
+        subredditCounts[sub] = 1;
+      }
+    });
+  }
   
   const topSubreddits = Object.entries(subredditCounts)
     .sort((a, b) => b[1] - a[1])
@@ -191,43 +190,44 @@ export default function TopicDetailPage() {
 
         {/* Bottom Section */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          {/* Top Examples - Current topic and related posts */}
+          {/* Top Examples - Related Reddit posts in this topic */}
           <div className="bg-[#1a1d24] border border-neutral-800 rounded-xl p-5">
             <h3 className="text-neutral-300 font-medium mb-4">Top Examples</h3>
             <div className="flex flex-col gap-3">
-              {/* Current topic first */}
-              <Link
-                href={topic.url || "#"}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="bg-[#0f1114] border border-neutral-800 rounded-lg p-4 hover:border-neutral-700 transition-colors group"
-              >
-                <p className="text-white text-sm font-medium truncate pr-6 mb-1">
-                  {topic.title}
-                </p>
-                <div className="flex items-center justify-between">
-                  <p className="text-neutral-500 text-xs">r/{topic.subreddit}</p>
-                  <RiExternalLinkLine className="text-neutral-600 group-hover:text-neutral-400 transition-colors" />
-                </div>
-              </Link>
-              {/* Related posts */}
-              {relatedPosts.map((post, i) => (
+              {relatedPosts.length > 0 ? (
+                relatedPosts.slice(0, 3).map((post: any, i: number) => (
+                  <Link
+                    key={`example-${post.id}-${i}`}
+                    href={post.url || "#"}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-[#0f1114] border border-neutral-800 rounded-lg p-4 hover:border-neutral-700 transition-colors group"
+                  >
+                    <p className="text-white text-sm font-medium truncate pr-6 mb-1">
+                      {post.title}
+                    </p>
+                    <div className="flex items-center justify-between">
+                      <p className="text-neutral-500 text-xs">r/{post.subreddit}</p>
+                      <RiExternalLinkLine className="text-neutral-600 group-hover:text-neutral-400 transition-colors" />
+                    </div>
+                  </Link>
+                ))
+              ) : (
                 <Link
-                  key={`example-${post.id}-${i}`}
-                  href={post.url || "#"}
+                  href={topic.url || "#"}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="bg-[#0f1114] border border-neutral-800 rounded-lg p-4 hover:border-neutral-700 transition-colors group"
                 >
                   <p className="text-white text-sm font-medium truncate pr-6 mb-1">
-                    {post.title}
+                    {topic.originalTitle || topic.title}
                   </p>
                   <div className="flex items-center justify-between">
-                    <p className="text-neutral-500 text-xs">r/{post.subreddit}</p>
+                    <p className="text-neutral-500 text-xs">r/{topic.subreddit}</p>
                     <RiExternalLinkLine className="text-neutral-600 group-hover:text-neutral-400 transition-colors" />
                   </div>
                 </Link>
-              ))}
+              )}
             </div>
           </div>
 
