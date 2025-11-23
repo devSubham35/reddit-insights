@@ -7,6 +7,7 @@ import React, { useEffect, useState } from "react";
 import TopicRow from "../components/TopicRow";
 import LoadingBlock from "../components/LoadingBlock";
 import { useRouter } from "next/navigation";
+import { Input } from "@/components/ui/input";
 
 type FilterType = "all" | "rising" | "falling";
 
@@ -122,7 +123,7 @@ export default function HomePage() {
           <Button
             onClick={handleRefresh}
             disabled={loading}
-            className="mt-4 bg-[#ff4d9d] hover:bg-[#ff3385] text-white font-medium px-6 py-2 rounded-full"
+            className="mt-4 bg-[#ff4d9d] hover:bg-[#ff3385] text-white font-medium px-6 py-2 rounded-lg"
           >
             <RiRefreshLine className={`mr-2 ${loading ? "animate-spin" : ""}`} />
             Refresh Topics
@@ -130,14 +131,15 @@ export default function HomePage() {
         </div>
 
         {/* Search Form with Filters */}
-        <div className="mb-6 flex items-center gap-2 w-full h-12">
+        <div className="mb-6 w-full flex flex-col md:flex-row md:items-center gap-3 md:gap-4">
+
           {/* Search Form */}
           <form
             onSubmit={onSubmit}
-            className="flex items-center gap-2 w-full h-full"
+            className="flex w-full gap-2 h-11"
           >
-            <input
-              className="w-full bg-[#1a1d24] border border-neutral-800 rounded-xl outline-none text-white placeholder:text-neutral-500 px-4 h-full"
+            <Input
+              className="w-full bg-[#1a1d24] border border-neutral-800 rounded-lg outline-none text-white placeholder:text-neutral-500 px-4 h-full"
               placeholder="Search topics..."
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -145,28 +147,29 @@ export default function HomePage() {
 
             <Button
               disabled={loading}
-              className="px-6 rounded-xl bg-[#ff4d9d] hover:bg-[#ff3385] text-white font-semibold h-[90%]"
+              className="px-6 rounded-lg bg-[#ff4d9d] hover:bg-[#ff3385] text-white font-semibold h-full border border-pink-800"
             >
               {loading ? "Searching..." : "Search"}
             </Button>
           </form>
 
           {/* Filter Buttons */}
-          <div className="flex items-center gap-2 h-[90%]">
+          <div className="flex items-center gap-1 h-11 bg-[#1a1d24] border-neutral-800 border rounded-lg p-1 w-full md:w-auto justify-between md:justify-start">
             {(["all", "rising", "falling"] as FilterType[]).map((f) => (
-              <button
+              <Button
                 key={f}
                 onClick={() => setFilter(f)}
-                className={`h-full px-6 rounded-lg text-sm font-medium flex items-center transition-all ${filter === f
-                    ? "bg-[#ff4d9d] text-white"
-                    : "bg-[#1a1d24] text-neutral-400 hover:text-white hover:bg-[#252830]"
+                className={`flex-1 md:flex-none h-full px-4 md:px-6 rounded-lg text-sm font-medium transition-all ${filter === f
+                    ? "text-white bg-[#ff4d9d] hover:bg-[#ff3385]"
+                    : "bg-[#1a1d24] text-neutral-400 hover:bg-[#ff4d9d]/20 hover:text-white"
                   }`}
               >
                 {f.charAt(0).toUpperCase() + f.slice(1)}
-              </button>
+              </Button>
             ))}
           </div>
         </div>
+
 
 
         {/* Topics List */}

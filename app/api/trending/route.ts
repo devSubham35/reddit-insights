@@ -14,13 +14,29 @@ function safeUrl(u: string) {
   }
 }
 
-// Generate mock 7-day trend data
+// Generate mock 7-day trend data with upward curve at the end (like in the image)
 function generateTrendData(baseValue: number) {
   const trend = [];
+  const startValue = Math.max(2, Math.floor(baseValue * 0.2));
+  
   for (let i = 6; i >= 0; i--) {
     const dayLabel = i === 0 ? "today" : `${i}d`;
-    const variance = Math.random() * 0.5 + 0.5;
-    const value = i === 0 ? baseValue : Math.floor(baseValue * variance * (1 - i * 0.08));
+    let value;
+    
+    if (i >= 4) {
+      // Keep flat or slightly varying for older days
+      value = startValue + Math.floor(Math.random() * 2);
+    } else if (i === 3 || i === 2) {
+      // Start gradual increase
+      value = Math.floor(startValue * 1.2) + Math.floor(Math.random() * 2);
+    } else if (i === 1) {
+      // Steeper increase
+      value = Math.floor(baseValue * 0.6);
+    } else {
+      // Today - peak value
+      value = baseValue;
+    }
+    
     trend.push({ time: dayLabel, value: Math.max(1, value) });
   }
   return trend;
@@ -85,7 +101,7 @@ export async function GET(req: Request) {
           `${i + 1}. "${p.title}" (r/${p.subreddit}, ${p.upvotes} upvotes, ${p.comments} comments)`
         ).join("\n");
 
-        const prompt = `You are a social media trend analyst. Analyze these Reddit posts and identify 8-20 distinct trending topics or themes. 
+        const prompt = `You are a social media trend analyst. Analyze these Reddit posts and identify 8-12 distinct trending topics or themes. 
 
 For each topic, create:
 1. A clear, specific title (3-7 words) - be concrete and newsworthy
@@ -189,7 +205,7 @@ ${listText}`;
               breadth,
               dodChange,
               trendData: generateTrendData(baseValue),
-              relatedPosts: posts.slice(0, 5).map((p: any) => ({
+              relatedPosts: posts.slice(0, 10).map((p: any) => ({
                 id: p.id,
                 title: p.title,
                 subreddit: p.subreddit,
@@ -262,7 +278,7 @@ ${listText}`;
         const bEngagement = b[1].reduce((sum, p) => sum + p.engagementScore, 0);
         return bEngagement - aEngagement;
       })
-      .slice(0, 20)
+      .slice(0, 12)
       .map(([keyword, posts], idx) => {
         const totalEngagement = posts.reduce((sum, p) => sum + p.engagementScore, 0);
         const totalComments = posts.reduce((sum, p) => sum + p.comments, 0);

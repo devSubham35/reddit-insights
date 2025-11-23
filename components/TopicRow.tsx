@@ -9,7 +9,6 @@ interface TopicRowProps {
 }
 
 export default function TopicRow({ topic, rank }: TopicRowProps) {
-  // Safely handle potentially undefined values
   const mentions = topic.mentions ?? 0;
   const breadth = topic.breadth ?? 0;
   const dodChange = topic.dodChange ?? 0;
@@ -22,47 +21,49 @@ export default function TopicRow({ topic, rank }: TopicRowProps) {
   const dodIcon = isPositive ? "▲" : "▼";
 
   return (
-    <div className="bg-[#1a1d24] border border-neutral-800 rounded-xl px-5 py-4 hover:border-neutral-600 transition-all cursor-pointer">
-      <div className="flex items-center gap-4">
+    <div className="bg-[#1a1d24] border border-neutral-800 rounded-xl px-5 py-4 hover:border-neutral-600 transition-all cursor-pointer w-full">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:gap-4">
+
         {/* Rank */}
-        <div className="text-neutral-500 font-medium text-sm w-8 shrink-0">
+        <div className="text-neutral-500 font-medium text-sm w-10 shrink-0">
           #{rank}
         </div>
 
-        {/* Title & Subtitle */}
-        <div className="flex-1 min-w-0 pr-4">
-          <h3 className="text-white font-semibold text-base truncate">
-            {title}
-          </h3>
-          <p className="text-neutral-500 text-sm truncate">
-            {subtitle}
-          </p>
+        {/* Title + Subtitle */}
+        <div className="flex-1 min-w-0">
+          <h3 className="text-white font-semibold text-base truncate">{title}</h3>
+          <p className="text-neutral-500 text-sm truncate">{subtitle}</p>
         </div>
 
-        {/* Mentions */}
-        <div className="text-center w-20 shrink-0">
-          <div className="text-neutral-500 text-xs mb-1">Mentions</div>
-          <div className="text-white font-semibold">{mentions}</div>
-        </div>
+        {/* Metrics Row (Responsive Wrap) */}
+        <div className="flex flex-wrap md:flex-nowrap gap-4 md:gap-6 w-full md:w-auto justify-between md:justify-end">
 
-        {/* DoD (Day over Day) */}
-        <div className="text-center w-16 shrink-0">
-          <div className="text-neutral-500 text-xs mb-1">DoD</div>
-          <div className={`font-semibold ${dodColor}`}>
-            {dodIcon} {Math.abs(dodChange)}%
+          {/* Mentions */}
+          <div className="text-center w-20 shrink-0">
+            <div className="text-neutral-500 text-xs mb-1">Mentions</div>
+            <div className="text-white font-semibold">{mentions}</div>
           </div>
-        </div>
 
-        {/* Breadth */}
-        <div className="text-center w-16 shrink-0">
-          <div className="text-neutral-500 text-xs mb-1">Breadth</div>
-          <div className="text-white font-semibold">{breadth}</div>
-        </div>
+          {/* DoD */}
+          <div className="text-center w-16 shrink-0">
+            <div className="text-neutral-500 text-xs mb-1">DoD</div>
+            <div className={`font-semibold ${dodColor}`}>
+              {dodIcon} {Math.abs(dodChange)}%
+            </div>
+          </div>
 
-        {/* 7-Day Sparkline */}
-        <div className="w-24 shrink-0">
-          <div className="text-neutral-500 text-xs mb-1 text-center">7-Day</div>
-          <MiniSparkline data={trendData} />
+          {/* Breadth */}
+          <div className="text-center w-16 shrink-0">
+            <div className="text-neutral-500 text-xs mb-1">Breadth</div>
+            <div className="text-white font-semibold">{breadth}</div>
+          </div>
+
+          {/* Sparkline */}
+          <div className="w-24 shrink-0">
+            <div className="text-neutral-500 text-xs mb-1 text-center">7-Day</div>
+            <MiniSparkline data={trendData} />
+          </div>
+
         </div>
       </div>
     </div>
